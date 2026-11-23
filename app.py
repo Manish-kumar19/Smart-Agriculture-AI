@@ -7,11 +7,10 @@ import joblib
 import json
 
 from PIL import Image
-from tensorflow.keras.applications.mobilenet_v2 import preprocess_input
 
-# --------------------------------
+# ==========================================
 # PAGE CONFIGURATION
-# --------------------------------
+# ==========================================
 
 st.set_page_config(
     page_title="Smart Agriculture AI",
@@ -19,32 +18,160 @@ st.set_page_config(
     layout="wide"
 )
 
-# --------------------------------
+# ==========================================
 # LOAD TRAINED MODELS
-# --------------------------------
+# ==========================================
 
 @st.cache_resource
 def load_models():
 
+    # Load crop recommendation model
     crop_model = joblib.load(
         "models/crop_model.pkl"
     )
 
+    # Load potato disease detection model
     disease_model = tf.keras.models.load_model(
         "models/potato_disease_model.keras"
     )
 
-    with open("models/disease_classes.json", "r") as file:
-        classes = json.load(file)
+    # Load disease class names
+    with open(
+        "models/disease_classes.json",
+        "r"
+    ) as file:
 
-    return crop_model, disease_model, classes
+        disease_classes = json.load(file)
+
+    # Check model output and class mapping
+    if disease_model.output_shape[-1] != len(disease_classes):
+        raise ValueError(
+            "Number of model outputs does not match "
+            "the number of disease classes."
+        )
+
+    return crop_model, disease_model, disease_classes
 
 
-crop_model, disease_model, disease_classes = load_models()
+try:
 
-# --------------------------------
+    crop_model, disease_model, disease_classes = load_models()
+
+except Exception as e:
+
+    st.error(
+        f"Error loading models: {e}"
+    )
+
+    st.stop()
+
+
+# ==========================================
+# IMAGE PREDICTION FUNCTION
+# ==========================================
+
+def predict_potato_disease(image):
+
+    # Convert image to RGB
+    image = image.convert("RGB")
+
+    # Resize image to MobileNetV2 input size
+    image = image.resize(
+        (224, 224),
+        Image.Resampling.BILINEAR
+    )
+
+    # Convert image into NumPy array
+    image_array = np.array(
+        image,
+        dtype=np.float32
+    )
+
+    # Add batch dimension
+    image_array = np.expand_dims(
+        image_array,
+        axis=0
+    )
+
+    # IMPORTANT:
+    # Do not use preprocess_input here.
+    # The preprocessing layer is already included
+    # inside the trained Keras model.
+
+    # Get model predictions
+    predictions = disease_model.predict(
+        image_array,
+        verbose=0
+    )[0]
+
+    # Get predicted class index
+    predicted_index = int(
+        np.argmax(predictions)
+    )
+
+    # Get disease name
+    predicted_disease = disease_classes[
+        predicted_index
+    ]
+
+    # Get prediction confidence
+    confidence = float(
+        predictions[predicted_index] * 100
+    )
+
+    return predicted_disease, confidence, predictions
+
+
+# ==========================================
+# DISEASE TREATMENT RECOMMENDATIONS
+# ==========================================
+
+treatments = {
+
+    "Potato___Early_blight": [
+
+        "Remove heavily affected leaves.",
+
+        "Avoid overhead irrigation where possible.",
+
+        "Maintain proper plant spacing and airflow.",
+
+        "Use a locally registered fungicide if recommended "
+        "by an agricultural expert."
+
+    ],
+
+    "Potato___Late_blight": [
+
+        "Inspect nearby potato plants for symptoms.",
+
+        "Remove infected plant material safely.",
+
+        "Avoid working in wet foliage.",
+
+        "Seek local agricultural advice about registered "
+        "late blight control measures."
+
+    ],
+
+    "Potato___healthy": [
+
+        "No visible disease detected by the model.",
+
+        "Continue regular crop monitoring.",
+
+        "Maintain proper irrigation.",
+
+        "Provide balanced plant nutrition."
+
+    ]
+
+}
+
+
+# ==========================================
 # MAIN HEADER
-# --------------------------------
+# ==========================================
 
 st.title("🌱 Smart Agriculture AI System")
 
@@ -55,28 +182,35 @@ st.write(
 
 st.divider()
 
-# --------------------------------
+
+# ==========================================
 # SIDEBAR NAVIGATION
-# --------------------------------
+# ==========================================
 
 st.sidebar.title("Navigation")
 
 page = st.sidebar.radio(
+
     "Choose an option",
+
     [
         "Home",
         "Crop Recommendation",
         "Potato Disease Detection"
     ]
+
 )
 
-# --------------------------------
+
+# ==========================================
 # HOME PAGE
-# --------------------------------
+# ==========================================
 
 if page == "Home":
 
-    st.header("Welcome to Smart Agriculture AI")
+    st.header(
+        "Welcome to Smart Agriculture AI"
+    )
 
     st.write(
         "This application combines Machine Learning "
@@ -87,16 +221,20 @@ if page == "Home":
 
     with col1:
 
-        st.subheader("🌾 Crop Recommendation")
+        st.subheader(
+            "🌾 Crop Recommendation"
+        )
 
         st.write(
             "Enter soil nutrients and environmental "
-            "conditions to receive a crop recommendation."
+            "conditions to receive a suitable crop recommendation."
         )
 
     with col2:
 
-        st.subheader("🥔 Potato Disease Detection")
+        st.subheader(
+            "🥔 Potato Disease Detection"
+        )
 
         st.write(
             "Upload a potato leaf image to identify "
@@ -109,13 +247,16 @@ if page == "Home":
         "Both AI models are loaded and ready to use!"
     )
 
-# --------------------------------
+
+# ==========================================
 # CROP RECOMMENDATION PAGE
-# --------------------------------
+# ==========================================
 
 elif page == "Crop Recommendation":
 
-    st.header("🌾 Crop Recommendation System")
+    st.header(
+        "🌾 Crop Recommendation System"
+    )
 
     st.write(
         "Enter the soil and climate information below."
@@ -176,9 +317,13 @@ elif page == "Crop Recommendation":
             value=200.0
         )
 
-    if st.button("Recommend Crop", type="primary"):
+    if st.button(
+        "Recommend Crop",
+        type="primary"
+    ):
 
         input_data = pd.DataFrame(
+
             [[
                 nitrogen,
                 phosphorus,
@@ -188,6 +333,7 @@ elif page == "Crop Recommendation":
                 ph,
                 rainfall
             ]],
+
             columns=[
                 "N",
                 "P",
@@ -197,161 +343,267 @@ elif page == "Crop Recommendation":
                 "ph",
                 "rainfall"
             ]
+
         )
 
-        prediction = crop_model.predict(input_data)
+        # Predict crop
+        prediction = crop_model.predict(
+            input_data
+        )
 
         st.success(
             f"Recommended Crop: {prediction[0].upper()}"
         )
 
-        # Show prediction probabilities
-        probabilities = crop_model.predict_proba(input_data)[0]
+        # Get crop probabilities
+        probabilities = crop_model.predict_proba(
+            input_data
+        )[0]
 
         results = pd.DataFrame({
+
             "Crop": crop_model.classes_,
+
             "Probability (%)": probabilities * 100
+
         })
 
         results = results.sort_values(
+
             by="Probability (%)",
+
             ascending=False
+
         )
 
-        st.subheader("Top Crop Predictions")
+        st.subheader(
+            "Top Crop Predictions"
+        )
 
         st.dataframe(
+
             results.head(5).style.format(
-                {"Probability (%)": "{:.2f}%"}
+                {
+                    "Probability (%)": "{:.2f}%"
+                }
             ),
+
             use_container_width=True
+
         )
 
-# --------------------------------
+
+# ==========================================
 # POTATO DISEASE DETECTION PAGE
-# --------------------------------
+# ==========================================
 
 elif page == "Potato Disease Detection":
 
-    st.header("🥔 Potato Leaf Disease Detection")
+    st.header(
+        "🥔 Potato Leaf Disease Detection"
+    )
 
     st.write(
-        "Upload a clear image of a potato leaf."
+        "Upload a clear image of a potato leaf "
+        "to detect possible disease."
     )
 
     uploaded_file = st.file_uploader(
+
         "Upload Potato Leaf Image",
-        type=["jpg", "jpeg", "png"]
+
+        type=[
+            "jpg",
+            "jpeg",
+            "png"
+        ]
+
     )
 
     if uploaded_file is not None:
 
-        image = Image.open(
-            uploaded_file
-        ).convert("RGB")
+        try:
 
-        st.image(
-            image,
-            caption="Uploaded Potato Leaf",
-            width=350
-        )
+            # Open uploaded image
+            image = Image.open(
+                uploaded_file
+            ).convert("RGB")
 
-        if st.button("Detect Disease", type="primary"):
+            st.image(
 
-            # Resize image
-            image = image.resize((224, 224))
+                image,
 
-            # Convert to array
-            image_array = np.array(image)
+                caption="Uploaded Potato Leaf",
 
-            # Expand dimensions
-            image_array = np.expand_dims(
-                image_array,
-                axis=0
+                width=350
+
             )
 
-            # Preprocess image
-            image_array = preprocess_input(
-                image_array.astype(np.float32)
-            )
-
-            # Model prediction
-            predictions = disease_model.predict(
-                image_array,
-                verbose=0
-            )[0]
-
-            predicted_index = np.argmax(predictions)
-
-            disease = disease_classes[predicted_index]
-
-            confidence = predictions[predicted_index] * 100
-
-            st.subheader("Prediction Result")
-
-            st.success(
-                f"Detected Class: {disease.replace('Potato___', '').replace('_', ' ').title()}"
-            )
-
-            st.metric(
-                "Model Confidence",
-                f"{confidence:.2f}%"
-            )
-
-            # Treatment recommendations
-            treatments = {
-
-                "Potato___Early_blight": [
-                    "Remove heavily affected leaves.",
-                    "Avoid overhead irrigation where possible.",
-                    "Maintain good plant spacing and airflow.",
-                    "Use a locally registered fungicide if advised by an agricultural expert."
-                ],
-
-                "Potato___Late_blight": [
-                    "Inspect nearby potato plants for symptoms.",
-                    "Remove infected plant material safely.",
-                    "Avoid working in wet foliage.",
-                    "Seek immediate local agricultural advice about registered late blight control measures."
-                ],
-
-                "Potato___healthy": [
-                    "No visible disease detected by the model.",
-                    "Continue regular crop monitoring.",
-                    "Maintain proper irrigation and balanced nutrition."
-                ]
-            }
-
-            st.subheader("Recommended Actions")
-
-            for treatment in treatments.get(
-                disease,
-                ["Consult an agricultural expert."]
+            if st.button(
+                "Detect Disease",
+                type="primary"
             ):
 
-                st.write("✅", treatment)
+                with st.spinner(
+                    "Analyzing potato leaf image..."
+                ):
 
-            # Display all class probabilities
-            st.subheader("Prediction Probabilities")
+                    # Get model prediction
+                    disease, confidence, predictions = (
+                        predict_potato_disease(image)
+                    )
 
-            probability_df = pd.DataFrame({
-                "Disease": [
-                    c.replace("Potato___", "").replace("_", " ")
-                    for c in disease_classes
-                ],
-                "Confidence (%)": predictions * 100
-            })
+                # ==================================
+                # PREDICTION RESULT
+                # ==================================
 
-            st.bar_chart(
-                probability_df.set_index("Disease")
+                st.subheader(
+                    "Prediction Result"
+                )
+
+                # Format disease name
+                display_disease = (
+                    disease
+                    .replace("Potato___", "")
+                    .replace("_", " ")
+                    .title()
+                )
+
+                st.success(
+                    f"Detected Class: {display_disease}"
+                )
+
+                st.metric(
+
+                    "Model Confidence",
+
+                    f"{confidence:.2f}%"
+
+                )
+
+                # ==================================
+                # ALL CLASS PROBABILITIES
+                # ==================================
+
+                st.subheader(
+                    "Prediction Probabilities"
+                )
+
+                probability_df = pd.DataFrame({
+
+                    "Disease": [
+
+                        c.replace(
+                            "Potato___", ""
+                        ).replace(
+                            "_", " "
+                        ).title()
+
+                        for c in disease_classes
+
+                    ],
+
+                    "Confidence (%)": predictions * 100
+
+                })
+
+                probability_df = probability_df.sort_values(
+
+                    by="Confidence (%)",
+
+                    ascending=False
+
+                )
+
+                st.dataframe(
+
+                    probability_df.style.format({
+
+                        "Confidence (%)": "{:.2f}%"
+
+                    }),
+
+                    use_container_width=True
+
+                )
+
+                # Display probability chart
+                st.bar_chart(
+
+                    probability_df.set_index(
+                        "Disease"
+                    )
+
+                )
+
+                # ==================================
+                # TREATMENT RECOMMENDATIONS
+                # ==================================
+
+                st.subheader(
+                    "Recommended Actions"
+                )
+
+                if confidence < 70:
+
+                    st.warning(
+                        "The model has low confidence. "
+                        "Please upload a clearer image and "
+                        "seek agricultural expert confirmation."
+                    )
+
+                elif confidence < 85:
+
+                    st.warning(
+                        "The prediction is not fully certain. "
+                        "Please verify the result before taking action."
+                    )
+
+                else:
+
+                    st.info(
+                        "This is an AI-based prediction, "
+                        "not a confirmed plant disease diagnosis."
+                    )
+
+                for treatment in treatments.get(
+
+                    disease,
+
+                    [
+                        "Consult a local agricultural expert."
+                    ]
+
+                ):
+
+                    st.write(
+                        "✅",
+                        treatment
+                    )
+
+                # ==================================
+                # ADDITIONAL INFORMATION
+                # ==================================
+
+                st.divider()
+
+                st.caption(
+                    "Note: Prediction confidence is not the same "
+                    "as verified diagnostic accuracy. Results can "
+                    "be affected by image quality, lighting, "
+                    "background and training data."
+                )
+
+        except Exception as e:
+
+            st.error(
+                f"Error processing image: {e}"
             )
 
-            if confidence < 70:
 
-                st.warning(
-                    "Low prediction confidence. Please upload "
-                    "a clearer leaf image and seek expert confirmation."
-                )
+# ==========================================
+# FOOTER
+# ==========================================
 
 st.divider()
 
