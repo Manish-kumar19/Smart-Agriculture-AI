@@ -1,14 +1,17 @@
 
 import streamlit as st
-import tensorflow as tf
+import pandas as pd
 import numpy as np
+import tensorflow as tf
+import joblib
 import json
 
 from PIL import Image
+from tensorflow.keras.applications.mobilenet_v2 import preprocess_input
 
-# =====================================
+# --------------------------------
 # PAGE CONFIGURATION
-# =====================================
+# --------------------------------
 
 st.set_page_config(
     page_title="Smart Agriculture AI",
@@ -16,144 +19,137 @@ st.set_page_config(
     layout="wide"
 )
 
-st.title("🌱 SMART AGRICULTURE AI SYSTEM")
-
-st.markdown("""
-### Crop Recommendation and Plant Disease Detection
-**Using Artificial Intelligence and Deep Learning**
-""")
-
-# =====================================
+# --------------------------------
 # LOAD TRAINED MODELS
-# =====================================
+# --------------------------------
 
 @st.cache_resource
 def load_models():
 
-    crop_model = tf.keras.models.load_model(
-        "models/crop_model.keras"
+    crop_model = joblib.load(
+        "models/crop_model.pkl"
     )
 
     disease_model = tf.keras.models.load_model(
-        "models/disease_model.keras"
+        "models/potato_disease_model.keras"
     )
 
-    with open("models/crop_labels.json") as f:
-        crop_labels = json.load(f)
+    with open("models/disease_classes.json", "r") as file:
+        classes = json.load(file)
 
-    with open("models/disease_labels.json") as f:
-        disease_labels = json.load(f)
-
-    return (
-        crop_model,
-        disease_model,
-        crop_labels,
-        disease_labels
-    )
+    return crop_model, disease_model, classes
 
 
-try:
-    crop_model, disease_model, crop_labels, disease_labels = (
-        load_models()
-    )
+crop_model, disease_model, disease_classes = load_models()
 
-except Exception:
-    st.error(
-        "Models not found. First run: python train.py"
-    )
-    st.stop()
+# --------------------------------
+# MAIN HEADER
+# --------------------------------
 
+st.title("🌱 Smart Agriculture AI System")
 
-# =====================================
-# SIDEBAR
-# =====================================
+st.write(
+    "An integrated Artificial Intelligence system "
+    "for crop recommendation and potato leaf disease detection."
+)
 
-st.sidebar.title("🌾 SMART AGRICULTURE")
+st.divider()
 
-menu = st.sidebar.selectbox(
-    "Choose Module",
+# --------------------------------
+# SIDEBAR NAVIGATION
+# --------------------------------
+
+st.sidebar.title("Navigation")
+
+page = st.sidebar.radio(
+    "Choose an option",
     [
         "Home",
         "Crop Recommendation",
-        "Plant Disease Detection"
+        "Potato Disease Detection"
     ]
 )
 
-
-# =====================================
+# --------------------------------
 # HOME PAGE
-# =====================================
+# --------------------------------
 
-if menu == "Home":
+if page == "Home":
 
     st.header("Welcome to Smart Agriculture AI")
 
-    st.write("""
-    This intelligent agriculture application
-    provides two important features.
-    """)
-
-    col1, col2 = st.columns(2)
-
-    with col1:
-        st.subheader("🌱 Crop Recommendation")
-        st.write("""
-        Recommends the best crop based on:
-        - Nitrogen
-        - Phosphorus
-        - Potassium
-        - Temperature
-        - Humidity
-        - Soil pH
-        - Rainfall
-        """)
-
-    with col2:
-        st.subheader("🍃 Disease Detection")
-        st.write("""
-        Detects possible plant diseases
-        from uploaded leaf images using CNN.
-        """)
-
-    st.success("AI Agriculture System Ready!")
-
-
-# =====================================
-# CROP RECOMMENDATION
-# =====================================
-
-elif menu == "Crop Recommendation":
-
-    st.header("🌱 Crop Recommendation System")
-
     st.write(
-        "Enter soil and weather information below."
+        "This application combines Machine Learning "
+        "and Deep Learning to support agricultural decisions."
     )
 
     col1, col2 = st.columns(2)
 
     with col1:
 
-        N = st.number_input(
+        st.subheader("🌾 Crop Recommendation")
+
+        st.write(
+            "Enter soil nutrients and environmental "
+            "conditions to receive a crop recommendation."
+        )
+
+    with col2:
+
+        st.subheader("🥔 Potato Disease Detection")
+
+        st.write(
+            "Upload a potato leaf image to identify "
+            "Early Blight, Late Blight, or Healthy leaves."
+        )
+
+    st.divider()
+
+    st.success(
+        "Both AI models are loaded and ready to use!"
+    )
+
+# --------------------------------
+# CROP RECOMMENDATION PAGE
+# --------------------------------
+
+elif page == "Crop Recommendation":
+
+    st.header("🌾 Crop Recommendation System")
+
+    st.write(
+        "Enter the soil and climate information below."
+    )
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+
+        nitrogen = st.number_input(
             "Nitrogen (N)",
             min_value=0.0,
+            max_value=200.0,
             value=90.0
         )
 
-        P = st.number_input(
+        phosphorus = st.number_input(
             "Phosphorus (P)",
             min_value=0.0,
+            max_value=200.0,
             value=42.0
         )
 
-        K = st.number_input(
+        potassium = st.number_input(
             "Potassium (K)",
             min_value=0.0,
+            max_value=250.0,
             value=43.0
         )
 
         temperature = st.number_input(
             "Temperature (°C)",
+            min_value=-10.0,
+            max_value=60.0,
             value=25.0
         )
 
@@ -176,61 +172,75 @@ elif menu == "Crop Recommendation":
         rainfall = st.number_input(
             "Rainfall (mm)",
             min_value=0.0,
+            max_value=5000.0,
             value=200.0
         )
 
-    if st.button("🌾 Recommend Crop"):
+    if st.button("Recommend Crop", type="primary"):
 
-        input_data = np.array([[
-            N, P, K,
-            temperature,
-            humidity,
-            ph,
-            rainfall
-        ]], dtype=np.float32)
-
-        prediction = crop_model.predict(
-            input_data,
-            verbose=0
+        input_data = pd.DataFrame(
+            [[
+                nitrogen,
+                phosphorus,
+                potassium,
+                temperature,
+                humidity,
+                ph,
+                rainfall
+            ]],
+            columns=[
+                "N",
+                "P",
+                "K",
+                "temperature",
+                "humidity",
+                "ph",
+                "rainfall"
+            ]
         )
 
-        index = np.argmax(prediction)
-
-        crop = crop_labels[index]
-
-        confidence = float(
-            prediction[0][index] * 100
-        )
+        prediction = crop_model.predict(input_data)
 
         st.success(
-            f"Recommended Crop: {crop.upper()}"
+            f"Recommended Crop: {prediction[0].upper()}"
         )
 
-        st.metric(
-            "Model Confidence",
-            f"{confidence:.2f}%"
+        # Show prediction probabilities
+        probabilities = crop_model.predict_proba(input_data)[0]
+
+        results = pd.DataFrame({
+            "Crop": crop_model.classes_,
+            "Probability (%)": probabilities * 100
+        })
+
+        results = results.sort_values(
+            by="Probability (%)",
+            ascending=False
         )
 
-        st.info(
-            "Validate crop suitability with local soil "
-            "and agricultural recommendations."
+        st.subheader("Top Crop Predictions")
+
+        st.dataframe(
+            results.head(5).style.format(
+                {"Probability (%)": "{:.2f}%"}
+            ),
+            use_container_width=True
         )
 
+# --------------------------------
+# POTATO DISEASE DETECTION PAGE
+# --------------------------------
 
-# =====================================
-# PLANT DISEASE DETECTION
-# =====================================
+elif page == "Potato Disease Detection":
 
-elif menu == "Plant Disease Detection":
-
-    st.header("🍃 Plant Disease Detection")
+    st.header("🥔 Potato Leaf Disease Detection")
 
     st.write(
-        "Upload a plant leaf image to detect its category."
+        "Upload a clear image of a potato leaf."
     )
 
     uploaded_file = st.file_uploader(
-        "Upload Leaf Image",
+        "Upload Potato Leaf Image",
         type=["jpg", "jpeg", "png"]
     )
 
@@ -242,39 +252,45 @@ elif menu == "Plant Disease Detection":
 
         st.image(
             image,
-            caption="Uploaded Plant Leaf",
+            caption="Uploaded Potato Leaf",
             width=350
         )
 
-        if st.button("🔍 Detect Disease"):
+        if st.button("Detect Disease", type="primary"):
 
+            # Resize image
             image = image.resize((224, 224))
 
-            image_array = np.array(
-                image,
-                dtype=np.float32
-            )
+            # Convert to array
+            image_array = np.array(image)
 
+            # Expand dimensions
             image_array = np.expand_dims(
                 image_array,
                 axis=0
             )
 
-            prediction = disease_model.predict(
+            # Preprocess image
+            image_array = preprocess_input(
+                image_array.astype(np.float32)
+            )
+
+            # Model prediction
+            predictions = disease_model.predict(
                 image_array,
                 verbose=0
-            )
+            )[0]
 
-            index = np.argmax(prediction)
+            predicted_index = np.argmax(predictions)
 
-            disease = disease_labels[index]
+            disease = disease_classes[predicted_index]
 
-            confidence = float(
-                prediction[0][index] * 100
-            )
+            confidence = predictions[predicted_index] * 100
+
+            st.subheader("Prediction Result")
 
             st.success(
-                f"Predicted Class: {disease}"
+                f"Detected Class: {disease.replace('Potato___', '').replace('_', ' ').title()}"
             )
 
             st.metric(
@@ -282,25 +298,64 @@ elif menu == "Plant Disease Detection":
                 f"{confidence:.2f}%"
             )
 
-            if "healthy" in disease.lower():
+            # Treatment recommendations
+            treatments = {
 
-                st.info(
-                    "The leaf is classified as healthy."
-                )
+                "Potato___Early_blight": [
+                    "Remove heavily affected leaves.",
+                    "Avoid overhead irrigation where possible.",
+                    "Maintain good plant spacing and airflow.",
+                    "Use a locally registered fungicide if advised by an agricultural expert."
+                ],
 
-            else:
+                "Potato___Late_blight": [
+                    "Inspect nearby potato plants for symptoms.",
+                    "Remove infected plant material safely.",
+                    "Avoid working in wet foliage.",
+                    "Seek immediate local agricultural advice about registered late blight control measures."
+                ],
+
+                "Potato___healthy": [
+                    "No visible disease detected by the model.",
+                    "Continue regular crop monitoring.",
+                    "Maintain proper irrigation and balanced nutrition."
+                ]
+            }
+
+            st.subheader("Recommended Actions")
+
+            for treatment in treatments.get(
+                disease,
+                ["Consult an agricultural expert."]
+            ):
+
+                st.write("✅", treatment)
+
+            # Display all class probabilities
+            st.subheader("Prediction Probabilities")
+
+            probability_df = pd.DataFrame({
+                "Disease": [
+                    c.replace("Potato___", "").replace("_", " ")
+                    for c in disease_classes
+                ],
+                "Confidence (%)": predictions * 100
+            })
+
+            st.bar_chart(
+                probability_df.set_index("Disease")
+            )
+
+            if confidence < 70:
 
                 st.warning(
-                    "Possible disease detected. "
-                    "Please confirm with an agricultural expert."
+                    "Low prediction confidence. Please upload "
+                    "a clearer leaf image and seek expert confirmation."
                 )
 
-# =====================================
-# FOOTER
-# =====================================
+st.divider()
 
-st.sidebar.markdown("---")
-
-st.sidebar.caption(
-    "Smart Agriculture AI | Deep Learning Project"
+st.caption(
+    "Smart Agriculture AI | Crop Recommendation "
+    "+ Potato Leaf Disease Detection"
 )

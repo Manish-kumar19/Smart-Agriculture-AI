@@ -1,7 +1,8 @@
-tensorflow
 numpy
 pandas
 scikit-learn
+tensorflow
 streamlit
 pillow
 matplotlib
+joblib
